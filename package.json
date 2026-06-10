@@ -66,6 +66,9 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
+    "transformIgnorePatterns": [
+      "node_modules/(?!(@octokit|universal-user-agent|before-after-hook)/)"
+    ],
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
