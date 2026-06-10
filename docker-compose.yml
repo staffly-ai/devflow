@@ -1,0 +1,13 @@
+services:
+  devflow:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      SKILLS_DIR: /app/skills
+    volumes:
+      - ./skills:/app/skills
+    restart: unless-stopped
