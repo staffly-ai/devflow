@@ -5,19 +5,19 @@
 
 ## Overview
 
-devflow is an open-source server that connects Bitbucket webhook events to Claude (Anthropic API) via MCP Server, enabling teams to automate SDLC workflows with AI. The primary use case is automatic code review triggered on every push to a feature branch — ensuring consistent development process (code quality, test coverage) before a PR is opened.
+devflow is an open-source server that connects GitHub webhook events to Claude (Anthropic API) via tool use, enabling teams to automate SDLC workflows with AI. The primary use case is automatic code review triggered on every push to a feature branch — ensuring consistent development process (code quality, test coverage) before a PR is opened.
 
 devflow complements interactive Claude Code usage (staffly-dev-ai plugin) — it handles the server-side, autonomous layer of the SCRUM flow.
 
 ## Architecture
 
 ```
-Bitbucket push event
+GitHub push / PR event
         │
         ▼
 ┌─────────────────────┐
-│   WebhookModule     │  NestJS controller, verifies Bitbucket HMAC signature
-│   POST /webhook     │  extracts: branch, diff, PR info, commit
+│   WebhookModule     │  NestJS controller, verifies GitHub HMAC signature
+│   POST /webhook     │  (X-Hub-Signature-256) — extracts: branch, diff, PR info
 └────────┬────────────┘
          │
          ▼
@@ -30,13 +30,12 @@ Bitbucket push event
 ┌─────────────────────┐     ┌──────────────────────────┐
 │   AgentModule       │────▶│      McpModule           │
 │   Anthropic SDK     │◀────│  tools: post_pr_comment  │
-│   Claude invocation │     │         get_file_diff    │
+│   Claude invocation │     │         get_diff         │
 └─────────────────────┘     │         get_pr_info      │
-                            │         get_jira_issue   │
                             └──────────┬───────────────┘
                                        │
                                        ▼
-                            Bitbucket REST API / Jira API
+                                 GitHub REST API
 ```
 
 ## Project Structure
@@ -58,8 +57,7 @@ devflow/
 │   │   ├── mcp.module.ts
 │   │   ├── mcp-server.service.ts    ← MCP Server definition
 │   │   └── tools/
-│   │       ├── bitbucket.tool.ts    ← post_pr_comment, get_diff, get_pr_info
-│   │       └── jira.tool.ts         ← get_jira_issue (optional)
+│   │       └── github-tools.service.ts  ← post_pr_comment, get_diff, get_pr_info
 │   └── agent/
 │       ├── agent.module.ts
 │       └── agent.service.ts         ← Anthropic SDK, Claude invocation
@@ -97,7 +95,7 @@ PR INFO:
 
 **Frontmatter fields:**
 - `name` — skill identifier
-- `trigger` — Bitbucket event type: `push` | `pullrequest:created` | `pullrequest:updated`
+- `trigger` — GitHub event type: `push` | `pull_request:opened` | `pull_request:synchronize`
 - `branches` — glob pattern for branch names (optional, defaults to all branches)
 
 **Template variables available in prompt:**
@@ -113,17 +111,12 @@ All configuration via environment variables:
 ```env
 # Required
 ANTHROPIC_API_KEY=sk-ant-...
-BITBUCKET_WEBHOOK_SECRET=...
-BITBUCKET_APP_PASSWORD=...
-BITBUCKET_WORKSPACE=staffly
+GITHUB_WEBHOOK_SECRET=...
+GITHUB_TOKEN=ghp_...
 
 # Optional
 SKILLS_DIR=./skills              # path to skills directory
 PORT=3000
-LOG_LEVEL=info
-JIRA_BASE_URL=                   # enables Jira tool if set
-JIRA_EMAIL=
-JIRA_API_TOKEN=
 ```
 
 ## Skills Pluggability
@@ -160,13 +153,12 @@ CMD ["node", "dist/main.js"]
 ## Data Flow — Code Review on Push
 
 1. Developer pushes to `feature/STF-1234-something`
-2. Bitbucket sends POST to `https://devflow.staffly.pl/webhook`
-3. `WebhookGuard` verifies HMAC-SHA256 signature
+2. GitHub sends POST to `https://devflow.staffly.pl/webhook`
+3. `WebhookGuard` verifies `X-Hub-Signature-256` HMAC-SHA256 signature
 4. `SkillRouter` matches event `push` + branch `feature/*` → loads `code-review.md`
-5. `AgentService` builds prompt: skill template + diff + PR info
-6. Claude calls MCP tools to fetch additional context if needed
-7. Claude calls `post_pr_comment` tool with structured review
-8. Developer sees inline comments in Bitbucket PR
+5. `AgentService` fetches diff from GitHub API, fills skill template variables
+6. Claude runs tool-use loop: calls `post_pr_comment` with structured review
+7. Developer sees review comment on the GitHub PR
 
 ## Out of Scope (v1)
 
